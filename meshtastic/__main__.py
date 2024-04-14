@@ -58,14 +58,18 @@ def onConnection(interface, topic=pub.AUTO_TOPIC):  # pylint: disable=W0613
 
 
 def getPref(node, comp_name):
-    """Get a channel or preferences value"""
+    """
+    Get a channel or preferences value.
 
-    name = splitCompoundName(comp_name)
-    wholeField = name[0] == name[1]  # We want the whole field
+    Currently only called from a single place.
+    """
 
-    camel_name = meshtastic.util.snake_to_camel(name[1])
+    part1, part2 = splitCompoundName(comp_name)
+    wholeField = part1 == part2  # We want the whole field
+
+    camel_name = meshtastic.util.snake_to_camel(part2)
     # Note: protobufs has the keys in snake_case, so snake internally
-    snake_name = meshtastic.util.camel_to_snake(name[1])
+    snake_name = meshtastic.util.camel_to_snake(part2)
     logging.debug(f"snake_name:{snake_name} camel_name:{camel_name}")
     logging.debug(f"use camel:{mt_config.camel_case}")
 
@@ -75,7 +79,7 @@ def getPref(node, comp_name):
     found = False
     for config in [localConfig, moduleConfig]:
         objDesc = config.DESCRIPTOR
-        config_type = objDesc.fields_by_name.get(name[0])
+        config_type = objDesc.fields_by_name.get(part1)
         pref = False
         if config_type:
             pref = config_type.message_type.fields_by_name.get(snake_name)
@@ -125,10 +129,9 @@ def getPref(node, comp_name):
 
 def splitCompoundName(comp_name):
     """Split compound (dot separated) preference name into parts"""
-    name = comp_name.split(".")
-    if len(name) < 2:
-        name[0] = comp_name
-        name.append(comp_name)
+    name = comp_name.split(".", 1)
+    if len(name) != 2:
+        name = [comp_name, comp_name]
     return name
 
 def traverseConfig(config_root, config, interface_config):
