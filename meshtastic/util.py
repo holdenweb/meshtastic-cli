@@ -190,7 +190,7 @@ class Timeout:
         self.expireTimeout *= waitFactor
         self.reset()
         while time.time() < self.expireTime:
-            if getattr(acknowledgment, attr, None):
+            if hasattr(acknowledgment, attr):
                 acknowledgment.reset()
                 return True
             time.sleep(self.sleepInterval)
@@ -200,7 +200,7 @@ class Timeout:
         """Block until telemetry response is received. Returns True if telemetry response has been received."""
         self.reset()
         while time.time() < self.expireTime:
-            if getattr(acknowledgment, "receivedTelemetry", None):
+            if hasattr(acknowledgment, "receivedTelemetry"):
                 acknowledgment.reset()
                 return True
             time.sleep(self.sleepInterval)

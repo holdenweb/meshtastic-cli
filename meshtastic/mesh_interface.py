@@ -250,6 +250,7 @@ class MeshInterface:
         onResponse: Optional[Callable[[mesh_pb2.MeshPacket], Any]]=None,
         channelIndex: int=0,
     ):
+        # XXX Documentation of arguments is incorrect
         """Send a utf8 string to some other node, if the node has a display it
            will also be shown on the device.
 
@@ -313,7 +314,7 @@ class MeshInterface:
         and can be used to track future message acks/naks.
         """
 
-        if getattr(data, "SerializeToString", None):
+        if hasattr(data, "SerializeToString"):
             logging.debug(f"Serializing protobuf as data: {stripnl(data)}")
             data = data.SerializeToString()
 
