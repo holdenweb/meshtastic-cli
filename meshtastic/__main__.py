@@ -153,27 +153,23 @@ def traverseConfig(config_root, config, interface_config):
 def setPref(config, comp_name, valStr) -> bool:
     """Set a channel or preferences value"""
 
-    name = splitCompoundName(comp_name)
+    first, second = splitCompoundName(comp_name)  ## An unqualified name becomes two copies of itself
 
-    snake_name = meshtastic.util.camel_to_snake(name[-1])
-    camel_name = meshtastic.util.snake_to_camel(name[-1])
+    snake_name = meshtastic.util.camel_to_snake(second)
+    camel_name = meshtastic.util.snake_to_camel(second)
     logging.debug(f"snake_name:{snake_name}")
     logging.debug(f"camel_name:{camel_name}")
 
     objDesc = config.DESCRIPTOR
-    config_part = config
-    config_type = objDesc.fields_by_name.get(name[0])
-    if config_type and config_type.message_type is not None:
-        for name_part in name[1:-1]:
-            part_snake_name = meshtastic.util.camel_to_snake((name_part))
-            config_part = getattr(config, config_type.name)
-            config_type = config_type.message_type.fields_by_name.get(part_snake_name)
+    config_type = objDesc.fields_by_name.get(first)
+
     pref = None
-    if config_type and config_type.message_type is not None:
-        pref = config_type.message_type.fields_by_name.get(snake_name)
-    # Others like ChannelSettings are standalone
-    elif config_type:
-        pref = config_type
+    if config_type:
+        if config_type.message_type is not None:
+            pref = config_type.message_type.fields_by_name.get(snake_name)
+        # Others like ChannelSettings are standalone
+        else:
+            pref = config_type
 
     if (not pref) or (not config_type):
         return False
@@ -195,11 +191,11 @@ def setPref(config, comp_name, valStr) -> bool:
         else:
             if mt_config.camel_case:
                 print(
-                    f"{name[0]}.{camel_name} does not have an enum called {val}, so you can not set it."
+                    f"{first}.{camel_name} does not have an enum called {val}, so you can not set it."
                 )
             else:
                 print(
-                    f"{name[0]}.{snake_name} does not have an enum called {val}, so you can not set it."
+                    f"{first}.{snake_name} does not have an enum called {val}, so you can not set it."
                 )
             print(f"Choices in sorted order are:")
             names = []
@@ -231,7 +227,7 @@ def setPref(config, comp_name, valStr) -> bool:
             print(f"Adding '{val}' to the ignore_incoming list")
             config_type.message_type.ignore_incoming.extend([val])
 
-    prefix = f"{'.'.join(name[0:-1])}." if config_type.message_type is not None else ""
+    prefix = f"{first}." if config_type.message_type is not None else ""
     if mt_config.camel_case:
         print(f"Set {prefix}{camel_name} to {valStr}")
     else:
@@ -754,7 +750,7 @@ def onConnected(interface):
             if enable:
                 ch.role = (
                     channel_pb2.Channel.Role.PRIMARY
-                    if (channelIndex == 0)
+                    if channelIndex == 0
                     else channel_pb2.Channel.Role.SECONDARY
                 )
             else:

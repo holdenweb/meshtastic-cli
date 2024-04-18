@@ -93,7 +93,7 @@ from meshtastic import (
     util,
 )
 from meshtastic.node import Node
-from meshtastic.util import DeferredExecution, Timeout, catchAndIgnore, fixme, stripnl
+from meshtastic.util import DeferredExecution, Timeout, stripnl
 
 # Note: To follow PEP224, comments should be after the module variable.
 

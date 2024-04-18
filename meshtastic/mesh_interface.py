@@ -78,13 +78,13 @@ class MeshInterface:
         self._acknowledgment: Acknowledgment = Acknowledgment()
         self.heartbeatTimer: Optional[threading.Timer] = None
         random.seed()  # FIXME, we should not clobber the random seedval here, instead tell user they must call it
-        self.currentPacketId: int = random.randint(0, 0xFFFFFFFF)
-        self.nodesByNum: Optional[Dict[int, Dict]] = None
-        self.configId: Optional[int] = None
-        self.gotResponse: bool = False  # used in gpio read
-        self.mask: Optional[int] = None  # used in gpio read and gpio watch
-        self.queueStatus: Optional[mesh_pb2.QueueStatus] = None
-        self.queue: collections.OrderedDict = collections.OrderedDict()
+        self.currentPacketId = random.randint(0, 0xFFFFFFFF)
+        self.nodesByNum = None  # Why not just an empty dict?
+        self.configId = None
+        self.gotResponse = False  # used in gpio read
+        self.mask = None  # used in gpio read and gpio watch
+        self.queueStatus = None
+        self.queue = collections.OrderedDict()
 
     def close(self):
         """Shutdown this interface"""
@@ -169,23 +169,15 @@ class MeshInterface:
 
                 user = node.get("user")
                 if user:
-                    row.update(
-                        {
-                            "User": user.get("longName", "N/A"),
-                            "AKA": user.get("shortName", "N/A"),
-                            "ID": user["id"],
-                        }
-                    )
+                    row["User"] = user.get("longName", "N/A")
+                    row["AKA"] = user.get("shortName", "N/A")
+                    row["ID"] = user["id"]
 
                 pos = node.get("position")
                 if pos:
-                    row.update(
-                        {
-                            "Latitude": formatFloat(pos.get("latitude"), 4, "°"),
-                            "Longitude": formatFloat(pos.get("longitude"), 4, "°"),
-                            "Altitude": formatFloat(pos.get("altitude"), 0, " m"),
-                        }
-                    )
+                    row["Latitude"] = formatFloat(pos.get("latitude"), 4, "°")
+                    row["Longitude"] = formatFloat(pos.get("longitude"), 4, "°")
+                    row["Altitude"] = formatFloat(pos.get("altitude"), 0, " m")
 
                 metrics = node.get("deviceMetrics")
                 if metrics:
@@ -195,33 +187,25 @@ class MeshInterface:
                             batteryString = "Powered"
                         else:
                             batteryString = str(batteryLevel) + "%"
-                        row.update({"Battery": batteryString})
-                    row.update(
-                        {
-                            "Channel util.": formatFloat(
+                        row.update["Battery"] = batteryString
+                    row["Channel util."] = formatFloat(
                                 metrics.get("channelUtilization"), 2, "%"
-                            ),
-                            "Tx air util.": formatFloat(
+                            )
+                    row["Tx air util."] =  formatFloat(
                                 metrics.get("airUtilTx"), 2, "%"
-                            ),
-                        }
-                    )
+                            )
 
-                row.update(
-                    {
-                        "SNR": formatFloat(node.get("snr"), 2, " dB"),
-                        "Hops Away": node.get("hopsAway", "unknown"),
-                        "Channel": node.get("channel"),
-                        "LastHeard": getLH(node.get("lastHeard")),
-                        "Since": getTimeAgo(node.get("lastHeard")),
-                    }
-                )
+                row["SNR"] = formatFloat(node.get("snr"), 2, " dB")
+                row["Hops Away"] = node.get("hopsAway", "unknown")
+                row["Channel"] = node.get("channel")
+                row["LastHeard"] = getLH(node.get("lastHeard"))
+                row["Since"] = getTimeAgo(node.get("lastHeard"))
 
                 rows.append(row)
 
         rows.sort(key=lambda r: r.get("LastHeard") or "0000", reverse=True)
-        for i, row in enumerate(rows):
-            row["N"] = i + 1
+        for i, row in enumerate(rows, start=1):
+            row["N"] = i
 
         table = tabulate(rows, headers="keys", missingval="N/A", tablefmt="fancy_grid")
         print(table)
@@ -517,6 +501,7 @@ class MeshInterface:
                 our_exit("No response from node. At least firmware 2.1.22 is required on the destination node.")
 
     def _addResponseHandler(self, requestId: int, callback: Callable):
+        "Add a handler for the response to request `requestId`."
         self.responseHandlers[requestId] = ResponseHandler(callback)
 
     def _sendPacket(self, meshPacket: mesh_pb2.MeshPacket, destinationId: Union[int,str]=BROADCAST_ADDR, wantAck: bool=False):
@@ -645,7 +630,7 @@ class MeshInterface:
         and raise an exception"""
         if not self.noProto:
             if not self.isConnected.wait(timeout):  # timeout after x seconds
-                raise MeshInterface.MeshInterfaceError("Timed out waiting for connection completion")
+                raise MeshInterface.MeshInterfaceError(f"Timeout: connection incomplete after {timeout} seconds.")
 
         # If we failed while connecting, raise the connection to the client
         if self.failure:
@@ -703,7 +688,7 @@ class MeshInterface:
         self.nodesByNum = {}  # nodes keyed by nodenum
 
         startConfig = mesh_pb2.ToRadio()
-        self.configId = random.randint(0, 0xFFFFFFFF)
+        self.configId = random.randint(0, 0xFFFFFFFF)  # Why not just do this in `__init__`?
         startConfig.want_config_id = self.configId
         self._sendToRadio(startConfig)
 
@@ -870,20 +855,21 @@ class MeshInterface:
             self._startConfig()  # redownload the node db etc...
 
         elif fromRadio.config or fromRadio.moduleConfig:
+            local_config = self.localNode.localConfig
             if fromRadio.config.HasField("device"):
-                self.localNode.localConfig.device.CopyFrom(fromRadio.config.device)
+                local_config.device.CopyFrom(fromRadio.config.device)
             elif fromRadio.config.HasField("position"):
-                self.localNode.localConfig.position.CopyFrom(fromRadio.config.position)
+                local_config.position.CopyFrom(fromRadio.config.position)
             elif fromRadio.config.HasField("power"):
-                self.localNode.localConfig.power.CopyFrom(fromRadio.config.power)
+                local_config.power.CopyFrom(fromRadio.config.power)
             elif fromRadio.config.HasField("network"):
-                self.localNode.localConfig.network.CopyFrom(fromRadio.config.network)
+                local_config.network.CopyFrom(fromRadio.config.network)
             elif fromRadio.config.HasField("display"):
-                self.localNode.localConfig.display.CopyFrom(fromRadio.config.display)
+                local_config.display.CopyFrom(fromRadio.config.display)
             elif fromRadio.config.HasField("lora"):
-                self.localNode.localConfig.lora.CopyFrom(fromRadio.config.lora)
+                local_config.lora.CopyFrom(fromRadio.config.lora)
             elif fromRadio.config.HasField("bluetooth"):
-                self.localNode.localConfig.bluetooth.CopyFrom(
+                local_config.bluetooth.CopyFrom(
                     fromRadio.config.bluetooth
                 )
 

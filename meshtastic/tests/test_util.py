@@ -13,11 +13,9 @@ from meshtastic.util import (
     Timeout,
     active_ports_on_supported_devices,
     camel_to_snake,
-    catchAndIgnore,
     convert_mac_addr,
     eliminate_duplicate_port,
     findPorts,
-    fixme,
     fromPSK,
     fromStr,
     genPSK256,
@@ -155,14 +153,6 @@ def test_our_exit_non_zero_return_value(capsys):
     assert pytest_wrapped_e.value.code == 1
 
 
-@pytest.mark.unitslow
-def test_fixme():
-    """Test fixme()"""
-    with pytest.raises(Exception) as pytest_wrapped_e:
-        fixme("some exception")
-    assert pytest_wrapped_e.type == Exception
-
-
 @pytest.mark.unit
 def test_support_info(capsys):
     """Test support_info"""
@@ -173,18 +163,6 @@ def test_support_info(capsys):
     assert re.search(r"Machine", out, re.MULTILINE)
     assert re.search(r"Executable", out, re.MULTILINE)
     assert err == ""
-
-
-@pytest.mark.unit
-def test_catchAndIgnore(caplog):
-    """Test catchAndIgnore() does not actually throw an exception, but just logs"""
-
-    def some_closure():
-        raise Exception("foo") # pylint: disable=W0719
-
-    with caplog.at_level(logging.DEBUG):
-        catchAndIgnore("something", some_closure)
-    assert re.search(r"Exception thrown in something", caplog.text, re.MULTILINE)
 
 
 @pytest.mark.unitslow
@@ -208,7 +186,7 @@ def test_remove_keys_from_dict_empty_keys():
 @pytest.mark.unitslow
 def test_remove_keys_from_dict():
     """Test remove_keys_from_dict()"""
-    assert remove_keys_from_dict(("b"), {"a": 1, "b": 2}) == {"a": 1}
+    assert remove_keys_from_dict(("b,"), {"a": 1, "b": 2}) == {"a": 1}
 
 
 @pytest.mark.unitslow
