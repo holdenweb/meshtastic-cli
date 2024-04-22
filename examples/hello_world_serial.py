@@ -7,13 +7,18 @@ import sys
 import meshtastic
 import meshtastic.serial_interface
 
-# simple arg check
+# simple arg check: we do expect a message, or what's the point?
 if len(sys.argv) < 2:
     print(f"usage: {sys.argv[0]} message")
     sys.exit(3)
 
 # By default will try to find a meshtastic device,
 # otherwise provide a device path like /dev/ttyUSB0
-iface = meshtastic.serial_interface.SerialInterface()
+# as an argument.
+try:
+    iface = meshtastic.serial_interface.SerialInterface()
+except OSError as e:
+    print(e, file=sys.stderr)
+    sys.exit(2)
 iface.sendText(sys.argv[1])
 iface.close()

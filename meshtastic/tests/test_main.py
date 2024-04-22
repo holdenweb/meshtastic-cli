@@ -121,14 +121,10 @@ def test_main_ch_index_no_devices(patched_find_ports, capsys):
     sys.argv = ["", "--ch-index", "1"]
     mt_config.args = sys.argv
 
-    with pytest.raises(SystemExit) as pytest_wrapped_e:
+    with pytest.raises(OSError) as pytest_wrapped_e:
         main()
     assert mt_config.channel_index == 1
-    assert pytest_wrapped_e.type == SystemExit
-    assert pytest_wrapped_e.value.code == 1
-    out, err = capsys.readouterr()
-    assert re.search(r"No.*Meshtastic.*device.*detected", out, re.MULTILINE)
-    assert err == ""
+    assert re.search(r"No.*Meshtastic.*device.*detected", str(pytest_wrapped_e.value), re.MULTILINE)
     patched_find_ports.assert_called()
 
 
@@ -2542,14 +2538,14 @@ def test_tunnel_tunnel_arg_with_no_devices(mock_platform_system, caplog, capsys)
     mt_config.args = sys.argv
     print(f"platform.system():{platform.system()}")
     with caplog.at_level(logging.DEBUG):
-        with pytest.raises(SystemExit) as pytest_wrapped_e:
+        with pytest.raises(OSError) as pytest_wrapped_e:
             tunnelMain()
         mock_platform_system.assert_called()
-        assert pytest_wrapped_e.type == SystemExit
-        assert pytest_wrapped_e.value.code == 1
-        out, err = capsys.readouterr()
-        assert re.search(r"No.*Meshtastic.*device.*detected", out, re.MULTILINE)
-        assert err == ""
+        assert re.search(
+            r"No.*Meshtastic.*device.*detected",
+            str(pytest_wrapped_e.value),
+            re.MULTILINE,
+        )
 
 
 @pytest.mark.unit
@@ -2565,14 +2561,10 @@ def test_tunnel_subnet_arg_with_no_devices(mock_platform_system, caplog, capsys)
     mt_config.args = sys.argv
     print(f"platform.system():{platform.system()}")
     with caplog.at_level(logging.DEBUG):
-        with pytest.raises(SystemExit) as pytest_wrapped_e:
+        with pytest.raises(OSError) as pytest_wrapped_e:
             tunnelMain()
         mock_platform_system.assert_called()
-        assert pytest_wrapped_e.type == SystemExit
-        assert pytest_wrapped_e.value.code == 1
-        out, err = capsys.readouterr()
-        assert re.search(r"No.*Meshtastic.*device.*detected", out, re.MULTILINE)
-        assert err == ""
+        assert re.search(r"No.*Meshtastic.*device.*detected", str(pytest_wrapped_e.value), re.MULTILINE)
 
 
 @pytest.mark.unit

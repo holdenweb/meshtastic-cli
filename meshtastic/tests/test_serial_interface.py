@@ -43,12 +43,12 @@ def test_SerialInterface_single_port(
 @patch("meshtastic.util.findPorts", return_value=[])
 def test_SerialInterface_no_ports(mocked_findPorts, capsys):
     """Test that we can instantiate a SerialInterface with no ports"""
-    serialInterface = SerialInterface(noProto=True)
+    with pytest.raises(OSError) as pytest_ex:
+        serialInterface = SerialInterface(noProto=True)
     mocked_findPorts.assert_called()
-    assert serialInterface.devPath is None
-    out, err = capsys.readouterr()
-    assert re.search(r"No.*Meshtastic.*device.*detected", out, re.MULTILINE)
-    assert err == ""
+    assert re.search(
+        r"No.*Meshtastic.*device.*detected", str(pytest_ex.value), re.MULTILINE
+    )
 
 
 @pytest.mark.unit
@@ -57,11 +57,11 @@ def test_SerialInterface_no_ports(mocked_findPorts, capsys):
 )
 def test_SerialInterface_multiple_ports(mocked_findPorts, capsys):
     """Test that we can instantiate a SerialInterface with two ports"""
-    with pytest.raises(SystemExit) as pytest_wrapped_e:
+    with pytest.raises(OSError) as pytest_wrapped_e:
         SerialInterface(noProto=True)
     mocked_findPorts.assert_called()
-    assert pytest_wrapped_e.type == SystemExit
-    assert pytest_wrapped_e.value.code == 1
-    out, err = capsys.readouterr()
-    assert re.search(r"Warning: Multiple serial ports were detected", out, re.MULTILINE)
-    assert err == ""
+    assert re.search(
+        r"Multiple serial ports were detected",
+        str(pytest_wrapped_e.value),
+        re.MULTILINE,
+    )

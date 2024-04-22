@@ -52,6 +52,7 @@ class MeshInterface:
 
     class MeshInterfaceError(Exception):
         """An exception class for general mesh interface errors"""
+
         def __init__(self, message):
             self.message = message
             super().__init__(self.message)
@@ -189,11 +190,11 @@ class MeshInterface:
                             batteryString = str(batteryLevel) + "%"
                         row.update["Battery"] = batteryString
                     row["Channel util."] = formatFloat(
-                                metrics.get("channelUtilization"), 2, "%"
-                            )
-                    row["Tx air util."] =  formatFloat(
-                                metrics.get("airUtilTx"), 2, "%"
-                            )
+                        metrics.get("channelUtilization"), 2, "%"
+                    )
+                    row["Tx air util."] = formatFloat(
+                        metrics.get("airUtilTx"), 2, "%"
+                    )
 
                 row["SNR"] = formatFloat(node.get("snr"), 2, " dB")
                 row["Hops Away"] = node.get("hopsAway", "unknown")
@@ -565,7 +566,15 @@ class MeshInterface:
         return meshPacket
 
     def waitForConfig(self):
-        """Block until radio config is received. Returns True if config has been received."""
+        """
+        Block until radio config is received. Returns True if config has
+        been received.
+
+        An alternative mechanism here would be to add code that performs the
+        necessary functions when the required event (in this case the
+        `myInfo` attribute being set) ocurs to a list of functions. Kind of
+        like (or is it exactly like) publish and subscribe.
+        """
         success = (
             self._timeout.waitForSet(self, attrs=("myInfo", "nodes"))
             and self.localNode.waitForConfig()

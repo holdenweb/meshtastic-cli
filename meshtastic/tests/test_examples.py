@@ -10,7 +10,10 @@ import pytest
 
 @pytest.mark.examples
 def test_examples_hello_world_serial_no_arg():
-    """Test hello_world_serial without any args"""
+    """Test hello_world_serial without any args.
+
+    A valid test, but not a particularly valuable one."""
+    print("test1")
     return_value, _ = subprocess.getstatusoutput(
         "python3 examples/hello_world_serial.py"
     )
@@ -18,14 +21,15 @@ def test_examples_hello_world_serial_no_arg():
 
 
 @pytest.mark.examples
-def test_examples_hello_world_serial_with_arg(capsys):
+def test_examples_hello_world_serial_with_arg():
     """Test hello_world_serial with arg"""
-    return_value, _ = subprocess.getstatusoutput(
-        "python3 examples/hello_world_serial.py hello"
+    print("test2")
+    result = subprocess.run(
+        ["python3", "examples/hello_world_serial.py", "hello"],
+        capture_output=True,
     )
-    assert return_value == 1
-    out, err = capsys.readouterr()
-    assert err == ""
-    assert "If no connection arguments are specified," in out
-    # TODO: Why does this not work?
-    # assert out == 'Warning: No Meshtastic devices detected.'
+    assert result.returncode == 2
+    assert type(result.stderr) == bytes
+    assert type("No serial Meshtastic device detected".encode('utf-8')) == bytes
+    assert "No serial Meshtastic device detected".encode('utf-8') in result.stderr
+
