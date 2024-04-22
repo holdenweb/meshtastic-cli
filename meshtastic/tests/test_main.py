@@ -377,22 +377,26 @@ def test_main_qr(capsys):
 @pytest.mark.unit
 @pytest.mark.usefixtures("reset_mt_config")
 def test_main_onConnected_exception(capsys):
-    """Test the exception in onConnected"""
+    """
+    Test the exception in onConnected.
+
+    As far as I can see, all this really does is verify that pyqrcode.create
+    gets called.
+    """
     sys.argv = ["", "--qr"]
     mt_config.args = sys.argv
 
+    class MyException(Exception):
+        ...
+
     def throw_an_exception(junk):
-        raise Exception("Fake exception.") # pylint: disable=W0719
+        raise MyException("Fake exception.")  # pylint: disable=W0719
 
     iface = MagicMock(autospec=SerialInterface)
     with patch("meshtastic.serial_interface.SerialInterface", return_value=iface):
         with patch("pyqrcode.create", side_effect=throw_an_exception):
-            with pytest.raises(SystemExit) as pytest_wrapped_e:
+            with pytest.raises(MyException) as pytest_wrapped_e:
                 main()
-                out, err = capsys.readouterr()
-                assert re.search("Aborting due to: Fake exception", out, re.MULTILINE)
-                assert err == ""
-                assert pytest_wrapped_e.type == Exception
 
 
 @pytest.mark.unit
@@ -1527,7 +1531,7 @@ def test_main_ch_longfast_on_non_primary_channel(capsys):
 
 @pytest.mark.unit
 @pytest.mark.usefixtures("reset_mt_config")
-def test_main_get_with_invalid(capsys):
+def test_main_get_with_invalid():
     """Test --get with invalid field"""
     sys.argv = ["", "--get", "foo"]
     mt_config.args = sys.argv
@@ -1543,12 +1547,8 @@ def test_main_get_with_invalid(capsys):
     iface.getNode.return_value = mocked_node
 
     with patch("meshtastic.serial_interface.SerialInterface", return_value=iface) as mo:
-        main()
-        out, err = capsys.readouterr()
-        assert re.search(r"Connected to radio", out, re.MULTILINE)
-        assert re.search(r"do not have attribute foo", out, re.MULTILINE)
-        assert re.search(r"Choices are...", out, re.MULTILINE)
-        assert err == ""
+        with pytest.raises(AttributeError) as pt_ex:
+            main()
         mo.assert_called()
 
 
@@ -2564,7 +2564,11 @@ def test_tunnel_subnet_arg_with_no_devices(mock_platform_system, caplog, capsys)
         with pytest.raises(OSError) as pytest_wrapped_e:
             tunnelMain()
         mock_platform_system.assert_called()
-        assert re.search(r"No.*Meshtastic.*device.*detected", str(pytest_wrapped_e.value), re.MULTILINE)
+        assert re.search(
+            r"No.*Meshtastic.*device.*detected",
+            str(pytest_wrapped_e.value),
+            re.MULTILINE,
+        )
 
 
 @pytest.mark.unit

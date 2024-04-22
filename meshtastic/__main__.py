@@ -88,19 +88,9 @@ def getPref(node, comp_name):
                 break
 
     if not found:
-        if mt_config.camel_case:
-            print(
-                f"{localConfig.__class__.__name__} and {moduleConfig.__class__.__name__} do not have an attribute {snake_name}."
-            )
-        else:
-            print(
-                f"{localConfig.__class__.__name__} and {moduleConfig.__class__.__name__} do not have attribute {snake_name}."
-            )
-        print("Choices are...")
-        printConfig(localConfig)
-        printConfig(moduleConfig)
-        return False
-
+        raise AttributeError(
+            f"Neither {localConfig.__class__.__name__} nor {moduleConfig.__class__.__name__} have a `{camel_name if mt_config.camel_case else snake_name}` attribute"
+        )
     # Check if we need to request the config
     if len(config.ListFields()) != 0:
         # read the value
@@ -242,164 +232,362 @@ def onConnected(interface):
     waitForAckNak = (
         False  # Should we wait for an acknowledgment if we send to a remote node?
     )
-    try:
-        args = mt_config.args
+    args = mt_config.args
 
-        # do not print this line if we are exporting the config
-        if not args.export_config:
-            print("Connected to radio")
+    # do not print this line if we are exporting the config
+    if not args.export_config:
+        print("Connected to radio")
 
         if args.setlat or args.setlon or args.setalt:
             if args.dest != BROADCAST_ADDR:
                 print("Setting latitude, longitude, and altitude of remote nodes is not supported.")
                 return
             closeNow = True
+        alt = 0
+        lat = 0.0
+        lon = 0.0
+        # TODO: use getNode(args.dest) to be able to set it for a remote node
+        localConfig = interface.localNode.localConfig
+        if args.setalt:
+            alt = int(args.setalt)
+            localConfig.position.fixed_position = True
+            print(f"Fixing altitude at {alt} meters")
+        if args.setlat:
+            lat = float(args.setlat)
+            localConfig.position.fixed_position = True
+            print(f"Fixing latitude at {lat} degrees")
+        if args.setlon:
+            lon = float(args.setlon)
+            localConfig.position.fixed_position = True
+            print(f"Fixing longitude at {lon} degrees")
 
-            alt = 0
-            lat = 0.0
-            lon = 0.0
-            # TODO: use getNode(args.dest) to be able to set it for a remote node
-            localConfig = interface.localNode.localConfig
-            if args.setalt:
-                alt = int(args.setalt)
-                localConfig.position.fixed_position = True
-                print(f"Fixing altitude at {alt} meters")
-            if args.setlat:
-                lat = float(args.setlat)
-                localConfig.position.fixed_position = True
-                print(f"Fixing latitude at {lat} degrees")
-            if args.setlon:
-                lon = float(args.setlon)
-                localConfig.position.fixed_position = True
-                print(f"Fixing longitude at {lon} degrees")
+        print("Setting device position")
+        # can include lat/long/alt etc: latitude = 37.5, longitude = -122.1
+        interface.sendPosition(lat, lon, alt)
+        interface.localNode.writeConfig("position")
+    elif not args.no_time:
+        # We normally provide a current time to the mesh when we connect
+        interface.sendPosition()
 
-            print("Setting device position")
-            # can include lat/long/alt etc: latitude = 37.5, longitude = -122.1
-            interface.sendPosition(lat, lon, alt)
-            interface.localNode.writeConfig("position")
-        elif not args.no_time:
-            # We normally provide a current time to the mesh when we connect
-            if interface.localNode.nodeNum in interface.nodesByNum and "position" in interface.nodesByNum[interface.localNode.nodeNum]:
-                # send the same position the node already knows, just to update time
-                position = interface.nodesByNum[interface.localNode.nodeNum]["position"]
-                interface.sendPosition(position.get("latitude", 0.0), position.get("longitude", 0.0), position.get("altitude", 0.0))
-            else:
-                interface.sendPosition()
+    if args.set_owner:
+        closeNow = True
+        waitForAckNak = True
+        print(f"Setting device owner to {args.set_owner}")
+        interface.getNode(args.dest, False).setOwner(args.set_owner)
 
-        if args.set_owner:
-            closeNow = True
-            waitForAckNak = True
-            print(f"Setting device owner to {args.set_owner}")
-            interface.getNode(args.dest, False).setOwner(args.set_owner)
+    if args.set_owner_short:
+        closeNow = True
+        waitForAckNak = True
+        print(f"Setting device owner short to {args.set_owner_short}")
+        interface.getNode(args.dest, False).setOwner(
+            long_name=None, short_name=args.set_owner_short
+        )
 
-        if args.set_owner_short:
-            closeNow = True
-            waitForAckNak = True
-            print(f"Setting device owner short to {args.set_owner_short}")
-            interface.getNode(args.dest, False).setOwner(
-                long_name=None, short_name=args.set_owner_short
+    # TODO: add to export-config and configure
+    if args.set_canned_message:
+        closeNow = True
+        waitForAckNak = True
+        print(f"Setting canned plugin message to {args.set_canned_message}")
+        interface.getNode(args.dest, False).set_canned_message(args.set_canned_message)
+
+    # TODO: add to export-config and configure
+    if args.set_ringtone:
+        closeNow = True
+        waitForAckNak = True
+        print(f"Setting ringtone to {args.set_ringtone}")
+        interface.getNode(args.dest, False).set_ringtone(args.set_ringtone)
+
+    if args.pos_fields:
+        # If --pos-fields invoked with args, set position fields
+        closeNow = True
+        positionConfig = interface.getNode(args.dest).localConfig.position
+        allFields = 0
+
+        try:
+            for field in args.pos_fields:
+                v_field = positionConfig.PositionFlags.Value(field)
+                allFields |= v_field
+
+        except ValueError:
+            print("ERROR: supported position fields are:")
+            print(positionConfig.PositionFlags.keys())
+            print("If no fields are specified, will read and display current value.")
+
+        else:
+            print(f"Setting position fields to {allFields}")
+            setPref(positionConfig, "position_flags", f"{allFields:d}")
+            print("Writing modified preferences to device")
+            interface.getNode(args.dest).writeConfig("position")
+
+    elif args.pos_fields is not None:
+        # If --pos-fields invoked without args, read and display current value
+        closeNow = True
+        positionConfig = interface.getNode(args.dest).localConfig.position
+
+        fieldNames = []
+        for bit in positionConfig.PositionFlags.values():
+            if positionConfig.position_flags & bit:
+                fieldNames.append(positionConfig.PositionFlags.Name(bit))
+        print(" ".join(fieldNames))
+
+    if args.set_ham:
+        closeNow = True
+        print(f"Setting Ham ID to {args.set_ham} and turning off encryption")
+        interface.getNode(args.dest).setOwner(args.set_ham, is_licensed=True)
+        # Must turn off encryption on primary channel
+        interface.getNode(args.dest).turnOffEncryptionOnPrimaryChannel()
+
+    if args.reboot:
+        closeNow = True
+        waitForAckNak = True
+        interface.getNode(args.dest, False).reboot()
+
+    if args.reboot_ota:
+        closeNow = True
+        waitForAckNak = True
+        interface.getNode(args.dest, False).rebootOTA()
+
+    if args.shutdown:
+        closeNow = True
+        waitForAckNak = True
+        interface.getNode(args.dest, False).shutdown()
+
+    if args.device_metadata:
+        closeNow = True
+        interface.getNode(args.dest, False).getMetadata()
+
+    if args.begin_edit:
+        closeNow = True
+        interface.getNode(args.dest, False).beginSettingsTransaction()
+
+    if args.commit_edit:
+        closeNow = True
+        interface.getNode(args.dest, False).commitSettingsTransaction()
+
+    if args.factory_reset:
+        closeNow = True
+        waitForAckNak = True
+        interface.getNode(args.dest, False).factoryReset()
+
+    if args.remove_node:
+        closeNow = True
+        waitForAckNak = True
+        interface.getNode(args.dest, False).removeNode(args.remove_node)
+
+    if args.reset_nodedb:
+        closeNow = True
+        waitForAckNak = True
+        interface.getNode(args.dest, False).resetNodeDb()
+
+    if args.sendtext:
+        closeNow = True
+        channelIndex = 0
+        if args.ch_index is not None:
+            channelIndex = int(args.ch_index)
+        ch = interface.localNode.getChannelByChannelIndex(channelIndex)
+        logging.debug(f"ch:{ch}")
+        if ch and ch.role != channel_pb2.Channel.Role.DISABLED:
+            print(
+                f"Sending text message {args.sendtext} to {args.dest} on channelIndex:{channelIndex}"
+            )
+            interface.sendText(
+                args.sendtext,
+                args.dest,
+                wantAck=True,
+                channelIndex=channelIndex,
+                onResponse=interface.getNode(args.dest, False).onAckNak,
+            )
+        else:
+            meshtastic.util.our_exit(
+                f"Warning: {channelIndex} is not a valid channel. Channel must not be DISABLED."
             )
 
-        # TODO: add to export-config and configure
-        if args.set_canned_message:
-            closeNow = True
-            waitForAckNak = True
-            print(f"Setting canned plugin message to {args.set_canned_message}")
-            interface.getNode(args.dest, False).set_canned_message(
-                args.set_canned_message
-            )
+    if args.traceroute:
+        loraConfig = getattr(interface.localNode.localConfig, "lora")
+        hopLimit = getattr(loraConfig, "hop_limit")
+        dest = str(args.traceroute)
+        print(f"Sending traceroute request to {dest} (this could take a while)")
+        interface.sendTraceRoute(dest, hopLimit)
 
-        # TODO: add to export-config and configure
-        if args.set_ringtone:
-            closeNow = True
-            waitForAckNak = True
-            print(f"Setting ringtone to {args.set_ringtone}")
-            interface.getNode(args.dest, False).set_ringtone(args.set_ringtone)
+    if args.request_telemetry:
+        if args.dest == BROADCAST_ADDR:
+            meshtastic.util.our_exit("Warning: Must use a destination node ID.")
+        else:
+            print(f"Sending telemetry request to {args.dest} (this could take a while)")
+            interface.sendTelemetry(destinationId=args.dest, wantResponse=True)
 
-        if args.pos_fields:
-            # If --pos-fields invoked with args, set position fields
-            closeNow = True
-            positionConfig = interface.getNode(args.dest).localConfig.position
-            allFields = 0
+    if args.gpio_wrb or args.gpio_rd or args.gpio_watch:
+        if args.dest == BROADCAST_ADDR:
+            meshtastic.util.our_exit("Warning: Must use a destination node ID.")
+        else:
+            rhc = remote_hardware.RemoteHardwareClient(interface)
 
-            try:
-                for field in args.pos_fields:
-                    v_field = positionConfig.PositionFlags.Value(field)
-                    allFields |= v_field
-
-            except ValueError:
-                print("ERROR: supported position fields are:")
-                print(positionConfig.PositionFlags.keys())
+            if args.gpio_wrb:
+                bitmask = 0
+                bitval = 0
+                for wrpair in args.gpio_wrb or []:
+                    bitmask |= 1 << int(wrpair[0])
+                    bitval |= int(wrpair[1]) << int(wrpair[0])
                 print(
-                    "If no fields are specified, will read and display current value."
+                    f"Writing GPIO mask 0x{bitmask:x} with value 0x{bitval:x} to {args.dest}"
                 )
+                rhc.writeGPIOs(args.dest, bitmask, bitval)
+                closeNow = True
 
+            if args.gpio_rd:
+                bitmask = int(args.gpio_rd, 16)
+                print(f"Reading GPIO mask 0x{bitmask:x} from {args.dest}")
+                interface.mask = bitmask
+                rhc.readGPIOs(args.dest, bitmask, None)
+                # wait up to X seconds for a response
+                for _ in range(10):
+                    time.sleep(1)
+                    if interface.gotResponse:
+                        break
+                logging.debug(f"end of gpio_rd")
+
+            if args.gpio_watch:
+                bitmask = int(args.gpio_watch, 16)
+                print(
+                    f"Watching GPIO mask 0x{bitmask:x} from {args.dest}. Press ctrl-c to exit"
+                )
+                while True:
+                    rhc.watchGPIOs(args.dest, bitmask)
+                    time.sleep(1)
+
+    # handle settings
+    if args.set:
+        closeNow = True
+        waitForAckNak = True
+        node = interface.getNode(args.dest, False)
+
+        # Handle the int/float/bool arguments
+        pref = None
+        for pref in args.set:
+            found = False
+            field = splitCompoundName(pref[0].lower())[0]
+            for config in [node.localConfig, node.moduleConfig]:
+                config_type = config.DESCRIPTOR.fields_by_name.get(field)
+                if config_type:
+                    if len(config.ListFields()) == 0:
+                        node.requestConfig(config.DESCRIPTOR.fields_by_name.get(field))
+                    found = setPref(config, pref[0], pref[1])
+                    if found:
+                        break
+
+        if found:
+            print("Writing modified preferences to device")
+            node.writeConfig(field)
+        else:
+            if mt_config.camel_case:
+                print(
+                    f"{node.localConfig.__class__.__name__} and {node.moduleConfig.__class__.__name__} do not have an attribute {pref[0]}."
+                )
             else:
-                print(f"Setting position fields to {allFields}")
-                setPref(positionConfig, "position_flags", f"{allFields:d}")
-                print("Writing modified preferences to device")
-                interface.getNode(args.dest).writeConfig("position")
+                print(
+                    f"{node.localConfig.__class__.__name__} and {node.moduleConfig.__class__.__name__} do not have attribute {pref[0]}."
+                )
+            print("Choices are...")
+            printConfig(node.localConfig)
+            printConfig(node.moduleConfig)
 
-        elif args.pos_fields is not None:
-            # If --pos-fields invoked without args, read and display current value
+    if args.configure:
+        with open(args.configure[0], encoding="utf8") as file:
+            configuration = yaml.safe_load(file)
             closeNow = True
-            positionConfig = interface.getNode(args.dest).localConfig.position
 
-            fieldNames = []
-            for bit in positionConfig.PositionFlags.values():
-                if positionConfig.position_flags & bit:
-                    fieldNames.append(positionConfig.PositionFlags.Name(bit))
-            print(" ".join(fieldNames))
-
-        if args.set_ham:
-            closeNow = True
-            print(f"Setting Ham ID to {args.set_ham} and turning off encryption")
-            interface.getNode(args.dest).setOwner(args.set_ham, is_licensed=True)
-            # Must turn off encryption on primary channel
-            interface.getNode(args.dest).turnOffEncryptionOnPrimaryChannel()
-
-        if args.reboot:
-            closeNow = True
-            waitForAckNak = True
-            interface.getNode(args.dest, False).reboot()
-
-        if args.reboot_ota:
-            closeNow = True
-            waitForAckNak = True
-            interface.getNode(args.dest, False).rebootOTA()
-
-        if args.shutdown:
-            closeNow = True
-            waitForAckNak = True
-            interface.getNode(args.dest, False).shutdown()
-
-        if args.device_metadata:
-            closeNow = True
-            interface.getNode(args.dest, False).getMetadata()
-
-        if args.begin_edit:
-            closeNow = True
             interface.getNode(args.dest, False).beginSettingsTransaction()
 
-        if args.commit_edit:
-            closeNow = True
+            if "owner" in configuration:
+                print(f"Setting device owner to {configuration['owner']}")
+                waitForAckNak = True
+                interface.getNode(args.dest, False).setOwner(configuration["owner"])
+
+            if "owner_short" in configuration:
+                print(f"Setting device owner short to {configuration['owner_short']}")
+                waitForAckNak = True
+                interface.getNode(args.dest, False).setOwner(
+                    long_name=None, short_name=configuration["owner_short"]
+                )
+
+            if "ownerShort" in configuration:
+                print(f"Setting device owner short to {configuration['ownerShort']}")
+                waitForAckNak = True
+                interface.getNode(args.dest, False).setOwner(
+                    long_name=None, short_name=configuration["ownerShort"]
+                )
+
+            if "channel_url" in configuration:
+                print("Setting channel url to", configuration["channel_url"])
+                interface.getNode(args.dest).setURL(configuration["channel_url"])
+
+            if "channelUrl" in configuration:
+                print("Setting channel url to", configuration["channelUrl"])
+                interface.getNode(args.dest).setURL(configuration["channelUrl"])
+
+            if "location" in configuration:
+                alt = 0
+                lat = 0.0
+                lon = 0.0
+                localConfig = interface.localNode.localConfig
+
+                if "alt" in configuration["location"]:
+                    alt = int(configuration["location"]["alt"])
+                    localConfig.position.fixed_position = True
+                    print(f"Fixing altitude at {alt} meters")
+                if "lat" in configuration["location"]:
+                    lat = float(configuration["location"]["lat"])
+                    localConfig.position.fixed_position = True
+                    print(f"Fixing latitude at {lat} degrees")
+                if "lon" in configuration["location"]:
+                    lon = float(configuration["location"]["lon"])
+                    localConfig.position.fixed_position = True
+                    print(f"Fixing longitude at {lon} degrees")
+                print("Setting device position")
+                interface.sendPosition(lat, lon, alt)
+                interface.localNode.writeConfig("position")
+
+            if "config" in configuration:
+                localConfig = interface.getNode(args.dest).localConfig
+                for section in configuration["config"]:
+                    for pref in configuration["config"][section]:
+                        setPref(
+                            localConfig,
+                            f"{meshtastic.util.camel_to_snake(section)}.{pref}",
+                            str(configuration["config"][section][pref]),
+                        )
+                    interface.getNode(args.dest).writeConfig(
+                        meshtastic.util.camel_to_snake(section)
+                    )
+
+            if "module_config" in configuration:
+                moduleConfig = interface.getNode(args.dest).moduleConfig
+                for section in configuration["module_config"]:
+                    for pref in configuration["module_config"][section]:
+                        setPref(
+                            moduleConfig,
+                            f"{meshtastic.util.camel_to_snake(section)}.{pref}",
+                            str(configuration["module_config"][section][pref]),
+                        )
+                    interface.getNode(args.dest).writeConfig(
+                        meshtastic.util.camel_to_snake(section)
+                    )
+
             interface.getNode(args.dest, False).commitSettingsTransaction()
+            print("Writing modified configuration to device")
 
-        if args.factory_reset:
-            closeNow = True
-            waitForAckNak = True
-            interface.getNode(args.dest, False).factoryReset()
+    if args.export_config:
+        # export the configuration (the opposite of '--configure')
+        closeNow = True
+        export_config(interface)
 
-        if args.remove_node:
-            closeNow = True
-            waitForAckNak = True
-            interface.getNode(args.dest, False).removeNode(args.remove_node)
+    if args.seturl:
+        closeNow = True
+        interface.getNode(args.dest).setURL(args.seturl)
 
-        if args.reset_nodedb:
-            closeNow = True
-            waitForAckNak = True
-            interface.getNode(args.dest, False).resetNodeDb()
+    # handle changing channels
 
+<<<<<<< HEAD
         if args.sendtext:
             closeNow = True
             channelIndex = 0
@@ -842,17 +1030,234 @@ def onConnected(interface):
             print(
                 f"Waiting for an acknowledgment from remote node (this could take a while)"
             )
-            interface.getNode(args.dest, False).iface.waitForAckNak()
+    if args.ch_ad:
+        channelIndex = mt_config.channel_index
+        if channelIndex is not None:
+            # Since we set the channel index after adding a channel, don't allow --ch-index
+            meshtastic.util.our_exit(
+                "Warning: '--ch-add' and '--ch-index' are incompatible. Channel not added."
+            )
+        closeNow = True
+        if len(args.ch_add) > 10:
+            meshtastic.util.our_exit(
+                "Warning: Channel name must be shorter. Channel not added."
+            )
+        n = interface.getNode(args.dest)
+        ch = n.getChannelByName(args.ch_add)
+        if ch:
+            meshtastic.util.our_exit(
+                f"Warning: This node already has a '{args.ch_add}' channel. No changes were made."
+            )
+        else:
+            # get the first channel that is disabled (i.e., available)
+            ch = n.getDisabledChannel()
+            if not ch:
+                meshtastic.util.our_exit("Warning: No free channels were found")
+            chs = channel_pb2.ChannelSettings()
+            chs.psk = meshtastic.util.genPSK256()
+            chs.name = args.ch_add
+            ch.settings.CopyFrom(chs)
+            ch.role = channel_pb2.Channel.Role.SECONDARY
+            print(f"Writing modified channels to device")
+            n.writeChannel(ch.index)
+            if channelIndex is None:
+                print(
+                    f"Setting newly-added channel's {ch.index} as '--ch-index' for further modifications"
+                )
+                mt_config.channel_index = ch.index
 
-        # if the user didn't ask for serial debugging output, we might want to exit after we've done our operation
-        if (not args.seriallog) and closeNow:
-            interface.close()  # after running command then exit
+    if args.ch_del:
+        closeNow = True
 
-    except Exception as ex:
-        print(f"Aborting due to: {ex}")
-        interface.close()  # close the connection now, so that our app exits
-        sys.exit(1)
+        channelIndex = mt_config.channel_index
+        if channelIndex is None:
+            meshtastic.util.our_exit(
+                "Warning: Need to specify '--ch-index' for '--ch-del'.", 1
+            )
+        else:
+            if channelIndex == 0:
+                meshtastic.util.our_exit("Warning: Cannot delete primary channel.", 1)
+            else:
+                print(f"Deleting channel {channelIndex}")
+                ch = interface.getNode(args.dest).deleteChannel(channelIndex)
 
+    def setSimpleConfig(modem_preset):
+        """Set one of the simple modem_config"""
+        channelIndex = mt_config.channel_index
+        if channelIndex is not None and channelIndex > 0:
+            meshtastic.util.our_exit(
+                "Warning: Cannot set modem preset for non-primary channel", 1
+            )
+        # Overwrite modem_preset
+        prefs = interface.getNode(args.dest).localConfig
+        prefs.lora.modem_preset = modem_preset
+        interface.getNode(args.dest).writeConfig("lora")
+
+    # handle the simple radio set commands
+    if args.ch_vlongslow:
+        setSimpleConfig(config_pb2.Config.LoRaConfig.ModemPreset.VERY_LONG_SLOW)
+
+    if args.ch_longslow:
+        setSimpleConfig(config_pb2.Config.LoRaConfig.ModemPreset.LONG_SLOW)
+
+    if args.ch_longfast:
+        setSimpleConfig(config_pb2.Config.LoRaConfig.ModemPreset.LONG_FAST)
+
+    if args.ch_medslow:
+        setSimpleConfig(config_pb2.Config.LoRaConfig.ModemPreset.MEDIUM_SLOW)
+
+    if args.ch_medfast:
+        setSimpleConfig(config_pb2.Config.LoRaConfig.ModemPreset.MEDIUM_FAST)
+
+    if args.ch_shortslow:
+        setSimpleConfig(config_pb2.Config.LoRaConfig.ModemPreset.SHORT_SLOW)
+
+    if args.ch_shortfast:
+        setSimpleConfig(config_pb2.Config.LoRaConfig.ModemPreset.SHORT_FAST)
+
+    if args.ch_set or args.ch_enable or args.ch_disable:
+        closeNow = True
+
+        channelIndex = mt_config.channel_index
+        if channelIndex is None:
+            meshtastic.util.our_exit("Warning: Need to specify '--ch-index'.", 1)
+        ch = interface.getNode(args.dest).channels[channelIndex]
+
+        if args.ch_enable or args.ch_disable:
+            if channelIndex == 0:
+                meshtastic.util.our_exit(
+                    "Warning: Cannot enable/disable PRIMARY channel."
+                )
+
+            enable = True  # default to enable
+            if args.ch_enable:
+                enable = True
+            if args.ch_disable:
+                enable = False
+
+        # Handle the channel settings
+        for pref in args.ch_set or []:
+            if pref[0] == "psk":
+                found = True
+                ch.settings.psk = meshtastic.util.fromPSK(pref[1])
+            else:
+                found = setPref(ch.settings, pref[0], pref[1])
+            if not found:
+                category_settings = ['module_settings']
+                print(
+                    f"{ch.settings.__class__.__name__} does not have an attribute {pref[0]}."
+                )
+                print("Choices are...")
+                for field in ch.settings.DESCRIPTOR.fields:
+                    if field.name not in category_settings:
+                        print(f"{field.name}")
+                    else:
+                        print(f"{field.name}:")
+                        config = ch.settings.DESCRIPTOR.fields_by_name.get(field.name)
+                        names = []
+                        for sub_field in config.message_type.fields:
+                            tmp_name = f"{field.name}.{sub_field.name}"
+                            names.append(tmp_name)
+                        for temp_name in sorted(names):
+                            print(f"    {temp_name}")
+
+            enable = (
+                True  # If we set any pref, assume the user wants to enable the channel
+            )
+
+        if enable:
+            ch.role = (
+                channel_pb2.Channel.Role.PRIMARY
+                if channelIndex == 0
+                else channel_pb2.Channel.Role.SECONDARY
+            )
+        else:
+            ch.role = channel_pb2.Channel.Role.DISABLED
+
+        print(f"Writing modified channels to device")
+        interface.getNode(args.dest).writeChannel(channelIndex)
+
+    if args.get_canned_message:
+        closeNow = True
+        print("")
+        interface.getNode(args.dest).get_canned_message()
+
+    if args.get_ringtone:
+        closeNow = True
+        print("")
+        interface.getNode(args.dest).get_ringtone()
+
+    if args.info:
+        print("")
+        # If we aren't trying to talk to our local node, don't show it
+        if args.dest == BROADCAST_ADDR:
+            interface.showInfo()
+            print("")
+            interface.getNode(args.dest).showInfo()
+            closeNow = True
+            print("")
+            pypi_version = meshtastic.util.check_if_newer_version()
+            if pypi_version:
+                print(
+                    f"*** A newer version v{pypi_version} is available!"
+                    ' Consider running "pip install --upgrade meshtastic" ***\n'
+                )
+        else:
+            print("Showing info of remote node is not supported.")
+            print(
+                "Use the '--get' command for a specific configuration (e.g. 'lora') instead."
+            )
+
+    if args.get:
+        closeNow = True
+        node = interface.getNode(args.dest, False)
+        for pref in args.get:
+            found = getPref(node, pref[0])
+
+        if found:
+            print("Completed getting preferences")
+
+    if args.nodes:
+        closeNow = True
+        if args.dest != BROADCAST_ADDR:
+            print("Showing node list of a remote node is not supported.")
+            return
+        interface.showNodes()
+
+    if args.qr:
+        closeNow = True
+        url = interface.localNode.getURL(includeAll=False)
+        print(f"Primary channel URL {url}")
+        qr = pyqrcode.create(url)
+        print(qr.terminal())
+
+    if args.listen:
+        closeNow = False
+
+    have_tunnel = platform.system() == "Linux"
+    if have_tunnel and args.tunnel:
+        # pylint: disable=C0415
+        from . import tunnel
+
+        # Even if others said we could close, stay open if the user asked for a tunnel
+        closeNow = False
+        if interface.noProto:
+            logging.warning(f"Not starting Tunnel - disabled by noProto")
+        else:
+            if args.tunnel_net:
+                tunnel.Tunnel(interface, subnet=args.tunnel_net)
+            else:
+                tunnel.Tunnel(interface)
+
+    if args.ack or (args.dest != BROADCAST_ADDR and waitForAckNak):
+        print(
+            f"Waiting for an acknowledgment from remote node (this could take a while)"
+        )
+        interface.getNode(args.dest, False).iface.waitForAckNak()
+
+    # if the user didn't ask for serial debugging output, we might want to exit after we've done our operation
+    if (not args.seriallog) and closeNow:
+        interface.close()  # after running command then exit
 
 def printConfig(config):
     """print configuration"""

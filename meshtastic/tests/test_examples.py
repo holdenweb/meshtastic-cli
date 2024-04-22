@@ -31,5 +31,5 @@ def test_examples_hello_world_serial_with_arg():
     assert result.returncode == 2
     assert type(result.stderr) == bytes
     assert type("No serial Meshtastic device detected".encode('utf-8')) == bytes
-    assert "No serial Meshtastic device detected".encode('utf-8') in result.stderr
+    assert b"No serial Meshtastic device detected" in result.stderr
 
