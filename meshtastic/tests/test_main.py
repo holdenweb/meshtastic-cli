@@ -381,7 +381,7 @@ def test_main_onConnected_exception(capsys):
     Test the exception in onConnected.
 
     As far as I can see, all this really does is verify that pyqrcode.create
-    gets called.
+    gets called. This is not a terribly useful test.
     """
     sys.argv = ["", "--qr"]
     mt_config.args = sys.argv
